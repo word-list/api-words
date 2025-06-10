@@ -39,7 +39,7 @@ func getWordsPage(conn *pgx.Conn, fromWord string, orderBy string, orderDirectio
 		ORDER BY %s %s
 		LIMIT $2`, filter, orderBy, orderDirection)
 
-	queryParams := []any{filter, fromWord, limit + 1}
+	queryParams := []any{fromWord, limit + 1}
 
 	if filterText != "" {
 		queryParams = append(queryParams, filterText)
