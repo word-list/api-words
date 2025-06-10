@@ -32,18 +32,19 @@ func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 
 func getWordsPage(conn *pgx.Conn, fromWord string, orderBy string, orderDirection string, filter string, filterText string, limit int) ([]Word, bool, error) {
 
+	queryParams := []any{fromWord, limit + 1}
+
+	if filterText != "" {
+		filter += " AND text LIKE $3"
+		queryParams = append(queryParams, filterText+"%")
+	}
+
 	query := fmt.Sprintf(`
 		SELECT text, commonness, offensiveness, sentiment 
 		FROM words
 		WHERE text > $1 %s
 		ORDER BY %s %s
 		LIMIT $2`, filter, orderBy, orderDirection)
-
-	queryParams := []any{fromWord, limit + 1}
-
-	if filterText != "" {
-		queryParams = append(queryParams, filterText)
-	}
 
 	rows, err := conn.Query(context.Background(), query, queryParams...)
 	if err != nil {
@@ -118,17 +119,13 @@ func getHandler(req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResp
 
 	filter := createFilter(req.QueryStringParameters)
 
-	if req.QueryStringParameters["startsWith"] != "" {
-		filter += " AND text LIKE $3"
-	}
-
 	words, hasMore, pageErr := getWordsPage(
 		conn,
 		req.QueryStringParameters["from"],
 		orderBy,
 		orderDirection,
 		filter,
-		req.QueryStringParameters["startsWith"]+"%",
+		req.QueryStringParameters["startsWith"],
 		100)
 
 	if pageErr != nil {
