@@ -72,7 +72,7 @@ func getHandler(req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResp
 
 	defer conn.Close(context.Background())
 
-	words, hasMore, pageErr := getWordsPage(conn, req.PathParameters["from"], 100)
+	words, hasMore, pageErr := getWordsPage(conn, req.QueryStringParameters["from"], 100)
 	if pageErr != nil {
 		panic(fmt.Sprintf("Failed to get words: %v", pageErr))
 	}
