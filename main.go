@@ -39,7 +39,13 @@ func getWordsPage(conn *pgx.Conn, fromWord string, orderBy string, orderDirectio
 		ORDER BY %s %s
 		LIMIT $2`, filter, orderBy, orderDirection)
 
-	rows, err := conn.Query(context.Background(), query, fromWord, limit+1, filterText)
+	queryParams := []any{filter, fromWord, limit + 1}
+
+	if filterText != "" {
+		queryParams = append(queryParams, filterText)
+	}
+
+	rows, err := conn.Query(context.Background(), query, queryParams...)
 	if err != nil {
 		panic(fmt.Sprintf("Query failed: %v", err))
 	}
