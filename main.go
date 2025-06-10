@@ -30,13 +30,16 @@ func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 
 }
 
-func getWordsPage(conn *pgx.Conn, fromWord string, limit int) ([]Word, bool, error) {
-	rows, err := conn.Query(context.Background(), `
+func getWordsPage(conn *pgx.Conn, fromWord string, orderBy string, orderDirection string, filter string, filterText string, limit int) ([]Word, bool, error) {
+
+	query := fmt.Sprintf(`
 		SELECT text, commonness, offensiveness, sentiment 
 		FROM words
-		WHERE text > $1 
-		ORDER BY text
-		LIMIT $2`, fromWord, limit+1)
+		WHERE text > $1 %s
+		ORDER BY %s %s
+		LIMIT $2`, filter, orderBy, orderDirection)
+
+	rows, err := conn.Query(context.Background(), query, fromWord, limit+1, filterText)
 	if err != nil {
 		panic(fmt.Sprintf("Query failed: %v", err))
 	}
@@ -61,6 +64,26 @@ func getWordsPage(conn *pgx.Conn, fromWord string, limit int) ([]Word, bool, err
 	return words, hasMore, nil
 }
 
+func createFilter(params map[string]string) string {
+
+	filter := ""
+
+	addIfPresent := func(name string, op string) {
+		if params[name] != "" {
+			filter += fmt.Sprintf(" AND %s %s %s", name, op, params[name])
+		}
+	}
+
+	addIfPresent("minCommonness", ">=")
+	addIfPresent("maxCommonness", "<=")
+	addIfPresent("minOffensiveness", ">=")
+	addIfPresent("maxOffensiveness", "<=")
+	addIfPresent("minSentiment", ">=")
+	addIfPresent("maxSentiment", "<=")
+
+	return filter
+}
+
 func getHandler(req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 
 	connStr := os.Getenv("DB_CONNECTION_STRING")
@@ -72,7 +95,28 @@ func getHandler(req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResp
 
 	defer conn.Close(context.Background())
 
-	words, hasMore, pageErr := getWordsPage(conn, req.QueryStringParameters["from"], 100)
+	orderBy := "text"
+	if req.QueryStringParameters["sort"] != "" {
+		orderBy = req.QueryStringParameters["sort"]
+	}
+
+	orderDirection := "asc"
+	if req.QueryStringParameters["direction"] != "" {
+		switch req.QueryStringParameters["direction"] {
+		case "asc", "ascending":
+			orderDirection = "ASC"
+		case "desc", "descending":
+			orderDirection = "DESC"
+		}
+	}
+
+	filter := createFilter(req.QueryStringParameters)
+
+	if req.QueryStringParameters["startsWith"] != "" {
+		filter += " AND text LIKE '$3%'"
+	}
+
+	words, hasMore, pageErr := getWordsPage(conn, req.QueryStringParameters["from"], orderBy, orderDirection, filter, req.QueryStringParameters["startsWith"], 100)
 	if pageErr != nil {
 		panic(fmt.Sprintf("Failed to get words: %v", pageErr))
 	}
