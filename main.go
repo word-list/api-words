@@ -113,10 +113,18 @@ func getHandler(req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResp
 	filter := createFilter(req.QueryStringParameters)
 
 	if req.QueryStringParameters["startsWith"] != "" {
-		filter += " AND text LIKE '$3%'"
+		filter += " AND text LIKE $3"
 	}
 
-	words, hasMore, pageErr := getWordsPage(conn, req.QueryStringParameters["from"], orderBy, orderDirection, filter, req.QueryStringParameters["startsWith"], 100)
+	words, hasMore, pageErr := getWordsPage(
+		conn,
+		req.QueryStringParameters["from"],
+		orderBy,
+		orderDirection,
+		filter,
+		req.QueryStringParameters["startsWith"]+"%",
+		100)
+
 	if pageErr != nil {
 		panic(fmt.Sprintf("Failed to get words: %v", pageErr))
 	}
