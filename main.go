@@ -77,7 +77,7 @@ func createFilter(params map[string]string) string {
 
 	addIfPresent := func(name string, op string) {
 		if params[name] != "" {
-			filter += fmt.Sprintf(" AND %s %s %s", name, op, params[name])
+			filter += fmt.Sprintf(" AND %s %s %s", name[3:], op, params[name])
 		}
 	}
 
