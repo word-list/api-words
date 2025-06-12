@@ -86,7 +86,7 @@ func buildQuery(query Query) (string, []any) {
 
 	if query.RandomCount > 0 {
 		paramCount := len(queryParams)
-		queryText += ` ORDER BY crc32(CONCAT($` + fmt.Sprint(paramCount) + `, text)) LIMIT $` + fmt.Sprint(paramCount+1) + ` ) AS subquery`
+		queryText += ` ORDER BY crc32(CONCAT($` + fmt.Sprint(paramCount) + `, text)) LIMIT $` + fmt.Sprint(paramCount+1) + ` ) AS subquery `
 		queryParams = append(queryParams, query.RandomSeed)
 		queryParams = append(queryParams, query.RandomCount)
 	}
