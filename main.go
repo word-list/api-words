@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -19,6 +21,22 @@ type Word struct {
 	Sentiment     int    `json:"sentiment"`
 }
 
+type Range struct {
+	Min int
+	Max int
+}
+
+type Query struct {
+	Commonness    Range
+	Offensiveness Range
+	Sentiment     Range
+	RandomCount   int
+	RandomSeed    string
+	WordLength    Range
+	StartFrom     string
+	Limit         int
+}
+
 func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 
 	switch req.RequestContext.HTTP.Method {
@@ -30,23 +48,60 @@ func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 
 }
 
-func getWordsPage(conn *pgx.Conn, fromWord string, orderBy string, orderDirection string, filter string, filterText string, limit int) ([]Word, bool, error) {
+func buildQuery(query Query) (string, []any) {
 
-	queryParams := []any{fromWord, limit + 1}
+	queryParams := []any{}
 
-	if filterText != "" {
-		filter += " AND text LIKE $3"
-		queryParams = append(queryParams, filterText+"%")
+	queryText := `
+		SELECT text, commonness, offensiveness, sentiment
+		FROM words
+		WHERE text > $1 `
+
+	queryParams = append(queryParams, query.StartFrom)
+
+	if query.RandomCount > 0 {
+		queryText = `SELECT text, commonness, offensiveness, sentiment FROM ( ` + queryText
 	}
 
-	query := fmt.Sprintf(`
-		SELECT text, commonness, offensiveness, sentiment 
-		FROM words
-		WHERE text > $1 %s
-		ORDER BY %s %s
-		LIMIT $2`, filter, orderBy, orderDirection)
+	queryText += ` AND commonness >= $2 AND commonness <= $3 `
+	queryParams = append(queryParams, query.Commonness.Min, query.Commonness.Max)
 
-	rows, err := conn.Query(context.Background(), query, queryParams...)
+	queryText += ` AND offensiveness >= $4 AND offensiveness <= $5 `
+	queryParams = append(queryParams, query.Offensiveness.Min, query.Offensiveness.Max)
+
+	queryText += ` AND sentiment >= $6 AND sentiment <= $7 `
+	queryParams = append(queryParams, query.Sentiment.Min, query.Sentiment.Max)
+
+	if query.WordLength.Min > 0 {
+		queryText += ` AND LENGTH(text) >= $8 `
+		queryParams = append(queryParams, query.WordLength.Min)
+	}
+
+	if query.WordLength.Max > 0 {
+		paramCount := len(queryParams)
+		queryText += ` AND LENGTH(text) <= $` + fmt.Sprint(paramCount) + ` `
+		queryParams = append(queryParams, query.WordLength.Max)
+	}
+
+	if query.RandomCount > 0 {
+		paramCount := len(queryParams)
+		queryText += ` ORDER BY crc32(CONCAT($` + fmt.Sprint(paramCount) + `, text)) LIMIT $` + fmt.Sprint(paramCount+1) + ` ) AS subquery`
+		queryParams = append(queryParams, query.RandomSeed)
+		queryParams = append(queryParams, query.RandomCount)
+	}
+
+	paramCount := len(queryParams)
+	queryText += `ORDER BY text ASC LIMIT $` + fmt.Sprint(paramCount) + `;`
+	queryParams = append(queryParams, query.Limit+1)
+
+	return queryText, queryParams
+}
+
+func getWordsPage(conn *pgx.Conn, query Query) ([]Word, bool, error) {
+
+	queryText, queryParams := buildQuery(query)
+
+	rows, err := conn.Query(context.Background(), queryText, queryParams...)
 	if err != nil {
 		panic(fmt.Sprintf("Query failed: %v", err))
 	}
@@ -63,7 +118,7 @@ func getWordsPage(conn *pgx.Conn, fromWord string, orderBy string, orderDirectio
 	}
 
 	var hasMore = false
-	if len(words) > limit {
+	if len(words) > query.Limit {
 		hasMore = true
 		words = words[:len(words)-1]
 	}
@@ -71,24 +126,63 @@ func getWordsPage(conn *pgx.Conn, fromWord string, orderBy string, orderDirectio
 	return words, hasMore, nil
 }
 
-func createFilter(params map[string]string) string {
+func getRangeFromParameters(params map[string]string, name string, min int, max int) Range {
 
-	filter := ""
-
-	addIfPresent := func(name string, op string) {
-		if params[name] != "" {
-			filter += fmt.Sprintf(" AND %s %s %s", name[3:], op, params[name])
-		}
+	minValue := min
+	if value, exists := params["min"+name]; exists {
+		minValue, _ = strconv.Atoi(value)
 	}
 
-	addIfPresent("minCommonness", ">=")
-	addIfPresent("maxCommonness", "<=")
-	addIfPresent("minOffensiveness", ">=")
-	addIfPresent("maxOffensiveness", "<=")
-	addIfPresent("minSentiment", ">=")
-	addIfPresent("maxSentiment", "<=")
+	maxValue := max
+	if value, exists := params["max"+name]; exists {
+		maxValue, _ = strconv.Atoi(value)
+	}
 
-	return filter
+	if minValue < min || minValue > max {
+		minValue = min
+	}
+
+	if maxValue < min || maxValue > max {
+		maxValue = max
+	}
+
+	return Range{Min: minValue, Max: maxValue}
+}
+
+func getIntFromParameters(params map[string]string, name string, defaultValue int) int {
+
+	value := defaultValue
+	if valueText, exists := params[name]; exists {
+		value, _ = strconv.Atoi(valueText)
+	}
+
+	return value
+}
+
+func getStringFromParameters(params map[string]string, name string, defaultValue string) string {
+
+	value := defaultValue
+	if valueText, exists := params[name]; exists {
+		value = valueText
+	}
+
+	return value
+}
+
+func getQueryFromParameters(params map[string]string) Query {
+
+	query := Query{
+		Commonness:    getRangeFromParameters(params, "Commonness", 0, 5),
+		Offensiveness: getRangeFromParameters(params, "Offensiveness", 0, 5),
+		Sentiment:     getRangeFromParameters(params, "Sentiment", -5, 5),
+		WordLength:    getRangeFromParameters(params, "Length", 0, 255),
+		RandomCount:   getIntFromParameters(params, "randomCount", 0),
+		RandomSeed:    getStringFromParameters(params, "randomSeed", fmt.Sprint(time.Now().Unix())),
+		StartFrom:     getStringFromParameters(params, "startFrom", ""),
+		Limit:         getIntFromParameters(params, "limit", 100),
+	}
+
+	return query
 }
 
 func getHandler(req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
@@ -102,40 +196,20 @@ func getHandler(req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResp
 
 	defer conn.Close(context.Background())
 
-	orderBy := "text"
-	if req.QueryStringParameters["sort"] != "" {
-		orderBy = req.QueryStringParameters["sort"]
-	}
+	query := getQueryFromParameters(req.QueryStringParameters)
 
-	orderDirection := "asc"
-	if req.QueryStringParameters["direction"] != "" {
-		switch req.QueryStringParameters["direction"] {
-		case "asc", "ascending":
-			orderDirection = "ASC"
-		case "desc", "descending":
-			orderDirection = "DESC"
-		}
-	}
-
-	filter := createFilter(req.QueryStringParameters)
-
-	words, hasMore, pageErr := getWordsPage(
-		conn,
-		req.QueryStringParameters["from"],
-		orderBy,
-		orderDirection,
-		filter,
-		req.QueryStringParameters["startsWith"],
-		100)
+	words, hasMore, pageErr := getWordsPage(conn, query)
 
 	if pageErr != nil {
 		panic(fmt.Sprintf("Failed to get words: %v", pageErr))
 	}
 
 	response := struct {
+		Query   Query  `json:"query"`
 		Words   []Word `json:"words"`
 		HasMore bool   `json:"hasMore"`
 	}{
+		Query:   query,
 		Words:   words,
 		HasMore: hasMore,
 	}
