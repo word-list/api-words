@@ -79,19 +79,19 @@ func buildQuery(query Query) (string, []any) {
 	}
 
 	if query.WordLength.Max > 0 {
-		paramCount := len(queryParams)
+		paramCount := len(queryParams) + 1
 		queryText += ` AND LENGTH(text) <= $` + fmt.Sprint(paramCount) + ` `
 		queryParams = append(queryParams, query.WordLength.Max)
 	}
 
 	if query.RandomCount > 0 {
-		paramCount := len(queryParams)
+		paramCount := len(queryParams) + 1
 		queryText += ` ORDER BY fnv64(CONCAT($` + fmt.Sprint(paramCount) + `, text)) LIMIT $` + fmt.Sprint(paramCount+1) + ` ) AS subquery `
 		queryParams = append(queryParams, query.RandomSeed)
 		queryParams = append(queryParams, query.RandomCount)
 	}
 
-	paramCount := len(queryParams)
+	paramCount := len(queryParams) + 1
 	queryText += `ORDER BY text ASC LIMIT $` + fmt.Sprint(paramCount) + `;`
 	queryParams = append(queryParams, query.Limit+1)
 
