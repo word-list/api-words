@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -93,6 +94,8 @@ func buildQuery(query Query) (string, []any) {
 	paramCount := len(queryParams)
 	queryText += `ORDER BY text ASC LIMIT $` + fmt.Sprint(paramCount) + `;`
 	queryParams = append(queryParams, query.Limit+1)
+
+	log.Printf("Generated query:\n%s", queryText)
 
 	return queryText, queryParams
 }
