@@ -16,10 +16,15 @@ import (
 )
 
 type Word struct {
-	Text          string `json:"text"`
-	Commonness    int    `json:"commonness"`
-	Offensiveness int    `json:"offensiveness"`
-	Sentiment     int    `json:"sentiment"`
+	Text                string `json:"text"`
+	Commonness          int    `json:"commonness"`
+	Offensiveness       int    `json:"offensiveness"`
+	Sentiment           int    `json:"sentiment"`
+	Formality           int    `json:"formality"`
+	CulturalSensitivity int    `json:"culturalSensitivity"`
+	Figurativeness      int    `json:"figurativeness"`
+	Complexity          int    `json:"complexity"`
+	Political           int    `json:"political"`
 }
 
 type Range struct {
@@ -28,14 +33,19 @@ type Range struct {
 }
 
 type Query struct {
-	Commonness    Range
-	Offensiveness Range
-	Sentiment     Range
-	RandomCount   int
-	RandomSeed    string
-	WordLength    Range
-	StartFrom     string
-	Limit         int
+	Commonness          Range
+	Offensiveness       Range
+	Sentiment           Range
+	Formality           Range
+	CulturalSensitivity Range
+	Figurativeness      Range
+	Complexity          Range
+	Political           Range
+	RandomCount         int
+	RandomSeed          string
+	WordLength          Range
+	StartFrom           string
+	Limit               int
 }
 
 func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
@@ -54,7 +64,10 @@ func buildQuery(query Query) (string, []any) {
 	queryParams := []any{}
 
 	queryText := `
-		SELECT text, commonness, offensiveness, sentiment
+		SELECT 
+			text, commonness, offensiveness, sentiment,
+			formality, culturalsensitivity, figurativeness,
+			complexity, political
 		FROM words
 		WHERE text > $1 `
 
@@ -73,8 +86,23 @@ func buildQuery(query Query) (string, []any) {
 	queryText += ` AND sentiment >= $6 AND sentiment <= $7 `
 	queryParams = append(queryParams, query.Sentiment.Min, query.Sentiment.Max)
 
+	queryText += ` AND formality >= $8 AND formality <= $9 `
+	queryParams = append(queryParams, query.Formality.Min, query.Formality.Max)
+
+	queryText += ` AND culturalsensitivity >= $10 AND culturalsensitivity <= $11 `
+	queryParams = append(queryParams, query.CulturalSensitivity.Min, query.CulturalSensitivity.Max)
+
+	queryText += ` AND figurativeness >= $12 AND figurativeness <= $13 `
+	queryParams = append(queryParams, query.Figurativeness.Min, query.Figurativeness.Max)
+
+	queryText += ` AND complexity >= $14 AND complexity <= $15 `
+	queryParams = append(queryParams, query.Complexity.Min, query.Complexity.Max)
+
+	queryText += ` AND political >= $16 AND political <= $17 `
+	queryParams = append(queryParams, query.Political.Min, query.Political.Max)
+
 	if query.WordLength.Min > 0 {
-		queryText += ` AND LENGTH(text) >= $8 `
+		queryText += ` AND LENGTH(text) >= $18 `
 		queryParams = append(queryParams, query.WordLength.Min)
 	}
 
@@ -114,7 +142,10 @@ func getWordsPage(conn *pgx.Conn, query Query) ([]Word, bool, error) {
 	var words []Word
 	for rows.Next() {
 		var word Word
-		if err := rows.Scan(&word.Text, &word.Commonness, &word.Offensiveness, &word.Sentiment); err != nil {
+		if err := rows.Scan(&word.Text,
+			&word.Commonness, &word.Offensiveness, &word.Sentiment,
+			&word.Formality, &word.CulturalSensitivity, &word.Figurativeness,
+			&word.Complexity, &word.Political); err != nil {
 			return nil, false, err
 		}
 		words = append(words, word)
@@ -175,14 +206,19 @@ func getStringFromParameters(params map[string]string, name string, defaultValue
 func getQueryFromParameters(params map[string]string) Query {
 
 	query := Query{
-		Commonness:    getRangeFromParameters(params, "Commonness", 0, 5),
-		Offensiveness: getRangeFromParameters(params, "Offensiveness", 0, 5),
-		Sentiment:     getRangeFromParameters(params, "Sentiment", -5, 5),
-		WordLength:    getRangeFromParameters(params, "Length", 0, 255),
-		RandomCount:   getIntFromParameters(params, "randomCount", 0),
-		RandomSeed:    getStringFromParameters(params, "randomSeed", fmt.Sprint(time.Now().Unix())),
-		StartFrom:     getStringFromParameters(params, "startFrom", ""),
-		Limit:         getIntFromParameters(params, "limit", 100),
+		Commonness:          getRangeFromParameters(params, "Commonness", 0, 5),
+		Offensiveness:       getRangeFromParameters(params, "Offensiveness", 0, 5),
+		Sentiment:           getRangeFromParameters(params, "Sentiment", -5, 5),
+		Formality:           getRangeFromParameters(params, "Formality", 0, 5),
+		CulturalSensitivity: getRangeFromParameters(params, "CulturalSensitivity", 0, 5),
+		Figurativeness:      getRangeFromParameters(params, "Figurativeness", 0, 5),
+		Complexity:          getRangeFromParameters(params, "Complexity", 0, 5),
+		Political:           getRangeFromParameters(params, "Political", 0, 5),
+		WordLength:          getRangeFromParameters(params, "Length", 0, 255),
+		RandomCount:         getIntFromParameters(params, "randomCount", 0),
+		RandomSeed:          getStringFromParameters(params, "randomSeed", fmt.Sprint(time.Now().Unix())),
+		StartFrom:           getStringFromParameters(params, "startFrom", ""),
+		Limit:               getIntFromParameters(params, "limit", 100),
 	}
 
 	return query
