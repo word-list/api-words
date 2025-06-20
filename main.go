@@ -63,7 +63,7 @@ func buildQuery(query Query) (string, []any) {
 
 	queryParams := []any{}
 
-	queryText := `SELECT text, commonness, offensiveness, sentiment, formality, culturalsensitivity, figurativeness, complexity, political FROM words WHERE text > $1; `
+	queryText := `SELECT text, commonness, offensiveness, sentiment, formality, culturalsensitivity, figurativeness, complexity, political FROM words WHERE text > $1 `
 
 	queryParams = append(queryParams, query.StartFrom)
 
