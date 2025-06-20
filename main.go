@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -63,58 +64,64 @@ func buildQuery(query Query) (string, []any) {
 
 	queryParams := []any{}
 
-	queryText := `SELECT text, commonness, offensiveness, sentiment, formality, culturalsensitivity, figurativeness, complexity, political FROM words WHERE text > $1 `
+	fields := []string{
+		"text", "commonness", "offensiveness", "sentiment",
+		"formality", "culturalsensitivity", "figurativeness",
+		"complexity", "political",
+	}
+
+	commaFields := strings.Join(fields, ", ")
+
+	queryText := fmt.Sprintf(`SELECT %s FROM words WHERE text > $1 `, commaFields)
 
 	queryParams = append(queryParams, query.StartFrom)
 
 	if query.RandomCount > 0 {
-		queryText = `SELECT text, commonness, offensiveness, sentiment, formality, culturalsensitivity, figurativeness, complexity, political FROM ( ` + queryText
+		queryText = fmt.Sprintf(`SELECT %s FROM ( %s`, commaFields, queryText)
 	}
 
-	queryText += ` AND commonness >= $2 AND commonness <= $3 `
-	queryParams = append(queryParams, query.Commonness.Min, query.Commonness.Max)
+	rangeQueries := []struct {
+		string
+		Range
+	}{
+		{"commonness", query.Commonness},
+		{"offensiveness", query.Offensiveness},
+		{"sentiment", query.Sentiment},
+		{"formality", query.Formality},
+		{"culturalsensitivity", query.CulturalSensitivity},
+		{"figurativeness", query.Figurativeness},
+		{"complexity", query.Complexity},
+		{"political", query.Political},
+	}
 
-	queryText += ` AND offensiveness >= $4 AND offensiveness <= $5 `
-	queryParams = append(queryParams, query.Offensiveness.Min, query.Offensiveness.Max)
-
-	queryText += ` AND sentiment >= $6 AND sentiment <= $7 `
-	queryParams = append(queryParams, query.Sentiment.Min, query.Sentiment.Max)
-
-	queryText += ` AND formality >= $8 AND formality <= $9 `
-	queryParams = append(queryParams, query.Formality.Min, query.Formality.Max)
-
-	queryText += ` AND culturalsensitivity >= $10 AND culturalsensitivity <= $11 `
-	queryParams = append(queryParams, query.CulturalSensitivity.Min, query.CulturalSensitivity.Max)
-
-	queryText += ` AND figurativeness >= $12 AND figurativeness <= $13 `
-	queryParams = append(queryParams, query.Figurativeness.Min, query.Figurativeness.Max)
-
-	queryText += ` AND complexity >= $14 AND complexity <= $15 `
-	queryParams = append(queryParams, query.Complexity.Min, query.Complexity.Max)
-
-	queryText += ` AND political >= $16 AND political <= $17 `
-	queryParams = append(queryParams, query.Political.Min, query.Political.Max)
+	for _, rq := range rangeQueries {
+		fromVar := len(queryParams) + 1
+		toVar := fromVar + 1
+		queryText += fmt.Sprintf(` AND %s >= $%d AND commonness <= $%d`, rq.string, fromVar, toVar)
+		queryParams = append(queryParams, rq.Range.Min, rq.Range.Max)
+	}
 
 	if query.WordLength.Min > 0 {
-		queryText += ` AND LENGTH(text) >= $18 `
+		paramCount := len(queryParams) + 1
+		queryText += fmt.Sprintf(` AND LENGTH(text) >= $%d `, paramCount)
 		queryParams = append(queryParams, query.WordLength.Min)
 	}
 
 	if query.WordLength.Max > 0 {
 		paramCount := len(queryParams) + 1
-		queryText += ` AND LENGTH(text) <= $` + fmt.Sprint(paramCount) + ` `
+		queryText += fmt.Sprintf(` AND LENGTH(text) <= $%d `, paramCount)
 		queryParams = append(queryParams, query.WordLength.Max)
 	}
 
 	if query.RandomCount > 0 {
 		paramCount := len(queryParams) + 1
-		queryText += ` ORDER BY fnv64(CONCAT($` + fmt.Sprint(paramCount) + `, text)) LIMIT $` + fmt.Sprint(paramCount+1) + ` ) AS subquery `
+		queryText += fmt.Sprintf(` ORDER BY fnv64(CONCAT($%d, text)) LIMIT $%d) AS subquery `, paramCount, paramCount+1)
 		queryParams = append(queryParams, query.RandomSeed)
 		queryParams = append(queryParams, query.RandomCount)
 	}
 
 	paramCount := len(queryParams) + 1
-	queryText += `ORDER BY text ASC LIMIT $` + fmt.Sprint(paramCount) + `;`
+	queryText += fmt.Sprintf(`ORDER BY text ASC LIMIT $%d;`, paramCount)
 	queryParams = append(queryParams, query.Limit+1)
 
 	log.Printf("Generated query:\n%s", queryText)
