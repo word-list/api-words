@@ -68,7 +68,7 @@ func buildQuery(query Query) (string, []any) {
 	queryParams = append(queryParams, query.StartFrom)
 
 	if query.RandomCount > 0 {
-		queryText = `SELECT text, commonness, offensiveness, sentiment FROM ( ` + queryText
+		queryText = `SELECT text, commonness, offensiveness, sentimen, formality, culturalsensitivity, figurativeness, complexity, political FROM ( ` + queryText
 	}
 
 	queryText += ` AND commonness >= $2 AND commonness <= $3 `
