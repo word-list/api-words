@@ -79,6 +79,8 @@ public class Function
 }
 
 [JsonSerializable(typeof(string))]
+[JsonSerializable(typeof(List<string>))]
+[JsonSerializable(typeof(Dictionary<string, int>))]
 [JsonSerializable(typeof(WordDto))]
 [JsonSerializable(typeof(List<WordDto>))]
 [JsonSerializable(typeof(APIGatewayHttpApiV2ProxyRequest))]
