@@ -1,11 +1,18 @@
 {
-    "name": "wordlist-api-sources-dev-container",
-    "image": "mcr.microsoft.com/devcontainers/go",
+    "name": "api-words-dev-container",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/aws-cli:1": {}
+    },
     "customizations": {
         "vscode": {
             "extensions": [
-                "golang.go",
-                "github.vscode-github-actions"
+                "ms-dotnettools.vscode-dotnet-runtime",
+                "ms-dotnettools.csdevkit",
+                "github.vscode-github-actions",
+                "ms-azuretools.vscode-containers"
             ]
         }
     }

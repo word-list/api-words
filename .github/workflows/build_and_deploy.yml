@@ -1,54 +1,52 @@
-name: Build
+name: Build and Deploy
 
 on:
     push:
         branches:
             - main
 
-jobs:    
+jobs:
     build:
-        runs-on: ubuntu-24.04-arm        
-        environment: staging
+        runs-on: ubuntu-22.04-arm
+        environment: staging        
         steps:
             - name: Checkout Repository
               uses: actions/checkout@v4
 
-            - name: Install Go 1.24.2
-              uses: actions/setup-go@v4
+            - name: Setup .NET SDK
+              uses: actions/setup-dotnet@v4
               with:
-                go-version: '1.24.2'
+                dotnet-version: '8.0.x'
+                
+            - name: Setup AOT dependencies
+              run: |
+                sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
 
-            - name: Set up Go modules
-              run: go mod tidy
+            - name: Authenticate Nuget
+              run: |
+                dotnet nuget add source "https://nuget.pkg.github.com/word-list/index.json" \
+                  --store-password-in-clear-text \
+                  --name "GitHub" \
+                  --username ${{ github.actor }} \
+                  --password ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Restore Dependencies
+              run: dotnet restore
 
             - name: Build
-              run: |
-                GOOS=linux GOARCH=arm64 go build -o bootstrap
-                zip lambda.zip bootstrap
+              run: dotnet publish --self-contained -p:PublishAot=true -p:IlcEnableStaticCompilation=true -r linux-arm64 -c Release
 
-            - name: Upload to S3
-              env:
-                AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-                AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-                AWS_REGION: "eu-west-2"
+            - name: Package Lambda
               run: |
-                aws s3 cp lambda.zip s3://${{ vars.DEPLOYMENT_BUCKET_NAME }}/$(basename ${GITHUB_REPOSITORY}).zip
+                cd bin/Release/net8.0/linux-arm64/publish
+                zip -r lambda-package.zip *
+            
+            - name: Configure AWS Credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                aws-region: eu-west-2
 
-    deploy:
-        runs-on: ubuntu-24.04-arm
-        strategy:
-            matrix:
-                environment: [staging]
-        needs: build
-        environment: 
-            name: staging
-        steps:
-            - name: Update AWS Lambda
-              env:
-                AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-                AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-                AWS_REGION: "eu-west-2"
-              run: |
-                aws lambda update-function-code --function-name wordlist-${{ matrix.environment }}-$(basename ${GITHUB_REPOSITORY}) \
-                  --s3-bucket ${{ vars.DEPLOYMENT_BUCKET_NAME }} \
-                  --s3-key $(basename ${GITHUB_REPOSITORY}).zip
+            - name: Deploy Lambda
+              run: aws lambda update-function-code --function-name ${{ vars.TARGET_LAMBDA_NAME }} --zip-file fileb://$(pwd)/bin/Release/net8.0/linux-arm64/publish/lambda-package.zip
