@@ -57,7 +57,16 @@ public class Function
 
             var words = await _wordDb.FindWordsAsync(text, null, queryAttributes, from, randomSeed, randomCount, limit).ConfigureAwait(false);
 
-            await context.Response.WriteAsJsonAsync(words.ToList(), LambdaFunctionJsonSerializerContext.Default.ListWordDto).ConfigureAwait(false);
+            var dtos = words
+                .Select(w => new WordDto
+                {
+                    Text = w.Text,
+                    Attributes = w.Attributes,
+                    Types = []
+                })
+                .ToList();
+
+            await context.Response.WriteAsJsonAsync(dtos, LambdaFunctionJsonSerializerContext.Default.ListWordDto).ConfigureAwait(false);
         }));
 
         await app.RunAsync();
