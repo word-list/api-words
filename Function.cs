@@ -55,9 +55,9 @@ public class Function
             var randomCount = GetQueryInt("randomCount") ?? 0;
             var limit = GetQueryInt("limit") ?? 100;
 
-            var words = await _wordDb.FindWordsAsync(text, null, queryAttributes, from, randomSeed, randomCount, limit);
+            var words = await _wordDb.FindWordsAsync(text, null, queryAttributes, from, randomSeed, randomCount, limit).ConfigureAwait(false);
 
-            await context.Response.WriteAsJsonAsync(attributes, LambdaFunctionJsonSerializerContext.Default.ListWordDto).ConfigureAwait(false);
+            await context.Response.WriteAsJsonAsync(words.ToList(), LambdaFunctionJsonSerializerContext.Default.ListWordDto).ConfigureAwait(false);
         }));
 
         await app.RunAsync();
