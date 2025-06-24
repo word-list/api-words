@@ -8,6 +8,7 @@ using WordList.Data.Sql;
 using Microsoft.AspNetCore.Http;
 using Amazon.Lambda.Serialization.SystemTextJson;
 using WordList.Api.Words.Models;
+using WordList.Data.Sql.Models;
 
 public class Function
 {
@@ -33,7 +34,7 @@ public class Function
                         : 0
                     : null;
 
-            var queryAttributes = new Dictionary<string, Range>();
+            var queryAttributes = new Dictionary<string, AttributeRange>();
 
             foreach (var attr in attributes)
             {
