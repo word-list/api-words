@@ -4,11 +4,11 @@ using System.Text.Json.Serialization;
 using Amazon.Lambda.APIGatewayEvents;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
-using WordList.Data.Sql;
 using Microsoft.AspNetCore.Http;
 using Amazon.Lambda.Serialization.SystemTextJson;
 using WordList.Api.Words.Models;
-using WordList.Data.Sql.Models;
+using WordList.Common.Words;
+using WordList.Common.Words.Models;
 
 public class Function
 {
